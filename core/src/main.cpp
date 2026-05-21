@@ -6,18 +6,10 @@
 
 #include <iostream>
 #include <fstream>
-#include <filesystem>  // C++17: para garantir que output/ exista
+#include <filesystem>
 
 using namespace ClusterEngine;
 
-/**
- * @brief Exporta:
- *  - features.csv: cada linha = filepath + vetor de features (usado pelo visualizer.py)
- *  - clusters_results.csv: filepath + cluster_id (usado pelo organizer.py)
- *
- * Observação: o Python é responsável por criar pastas Cluster_0..Cluster_(k-1) e copiar imagens.
- * O C++ só salva o "mapa" (CSV) de qual imagem pertence a qual cluster.
- */
 static void exportarResultados(const std::string& out_features,
                                const std::string& out_clusters,
                                const std::vector<Point>& dataset) {
@@ -28,7 +20,6 @@ static void exportarResultados(const std::string& out_features,
     for (const auto& p : dataset) {
         f_clus << p.filepath << "," << p.cluster_id << "\n";
 
-        // features.csv: primeira coluna é o filepath (para permitir rastrear pontos)
         f_feat << p.filepath;
         for (float v : p.features) f_feat << "," << v;
         f_feat << "\n";
@@ -38,7 +29,6 @@ static void exportarResultados(const std::string& out_features,
 int main() {
     std::cout << "=== PROTOCOLO DE COLETA DE METRICAS (TABELA 7) ===\n\n";
 
-    // Garante que a pasta output/ exista (evita falhas ao salvar CSVs)
     std::filesystem::create_directories("output");
 
     Timer timer_global;
@@ -70,9 +60,15 @@ int main() {
         Timer t1;
         t1.start();
         std::vector<Cluster> clusters_kmeans = kmeans_corel.executar(corel_data);
+        double tempo_kmeans_corel = t1.elapsedMilliseconds();
 
-        std::cout << "-> Metrica WCSS: " << calcularWCSS(corel_data, clusters_kmeans) << "\n";
-        std::cout << "-> Tempo Total: " << t1.elapsedMilliseconds() << " ms\n";
+        // Silhouette é O(N²): calculado separadamente do timer de clusterização
+        // para não contaminar a métrica de tempo da Tabela 7.
+        float silhouette_kmeans_corel = calcularSilhouette(corel_data, clusters_kmeans);
+
+        std::cout << "-> Metrica WCSS:       " << calcularWCSS(corel_data, clusters_kmeans) << "\n";
+        std::cout << "-> Silhouette Score:   " << silhouette_kmeans_corel << "\n";
+        std::cout << "-> Tempo Total:        " << tempo_kmeans_corel << " ms\n";
 
         // [2] Corel-1k com PAM (busca local)
         std::cout << "\n[2] Executando PAM (Busca Local) no Corel-1k...\n";
@@ -81,11 +77,15 @@ int main() {
         Timer t2;
         t2.start();
         std::vector<Cluster> clusters_pam = pam_corel.executar(corel_data);
+        double tempo_pam_corel = t2.elapsedMilliseconds();
 
         // Atenção: WCSS usa dist² ao centro. No PAM o custo interno é dist "bruta".
         // Mesmo assim, calcular WCSS é útil para comparação uniforme (Tabela 7).
-        std::cout << "-> Metrica WCSS: " << calcularWCSS(corel_data, clusters_pam) << "\n";
-        std::cout << "-> Tempo Total: " << t2.elapsedMilliseconds() << " ms\n";
+        float silhouette_pam_corel = calcularSilhouette(corel_data, clusters_pam);
+
+        std::cout << "-> Metrica WCSS:       " << calcularWCSS(corel_data, clusters_pam) << "\n";
+        std::cout << "-> Silhouette Score:   " << silhouette_pam_corel << "\n";
+        std::cout << "-> Tempo Total:        " << tempo_pam_corel << " ms\n";
 
     } catch (const std::exception& e) {
         std::cerr << "Erro no Corel-1k: " << e.what() << "\n";
@@ -127,7 +127,6 @@ int main() {
             acervo_data = ImageLoader::carregarListaImagens(lista_acervo);
         }
 
-        // Se ainda assim estiver vazio, não faz sentido prosseguir
         if (acervo_data.empty()) {
             std::cout << "[Aviso] Dataset de aplicacao pratica ainda vazio. Etapa 3 sera ignorada.\n";
         } else {
@@ -141,11 +140,14 @@ int main() {
             Timer t3;
             t3.start();
             std::vector<Cluster> clusters_acervo = kmeans_acervo.executar(acervo_data);
+            double tempo_kmeans_acervo = t3.elapsedMilliseconds();
 
-            std::cout << "-> Metrica WCSS: " << calcularWCSS(acervo_data, clusters_acervo) << "\n";
-            std::cout << "-> Tempo Total: " << t3.elapsedMilliseconds() << " ms\n";
+            float silhouette_kmeans_acervo = calcularSilhouette(acervo_data, clusters_acervo);
 
-            // Exporta o "mapa" para os scripts Python (visualização/organização em pastas)
+            std::cout << "-> Metrica WCSS:       " << calcularWCSS(acervo_data, clusters_acervo) << "\n";
+            std::cout << "-> Silhouette Score:   " << silhouette_kmeans_acervo << "\n";
+            std::cout << "-> Tempo Total:        " << tempo_kmeans_acervo << " ms\n";
+
             exportarResultados("output/features.csv", "output/clusters_results.csv", acervo_data);
             std::cout << "\n[Info] Resultados do Acervo exportados para reordenacao em diretorios.\n";
         }
