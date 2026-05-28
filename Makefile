@@ -38,8 +38,6 @@ $(SRC_DIR)/%.o: $(SRC_DIR)/%.cpp
 # -----------------------------
 # Geração de listas de imagens
 # -----------------------------
-# Gera uma lista de caminhos RELATIVOS (ex: data/corel1k/...).
-# Motivo: portável entre máquinas; não depende do /home/usuario/...
 list-corel:
 	@test -d "$(COREL_DIR)" || (echo "Erro: diretorio $(COREL_DIR) nao encontrado" && exit 1)
 	@echo "Gerando $(COREL_LIST)..."
@@ -55,9 +53,7 @@ list-acervo:
 # -----------------------------
 # Execução do protocolo (Tabela 7)
 # -----------------------------
-benchmark: all
-	@# Garante que a lista do Corel existe antes de rodar
-	@test -f "$(COREL_LIST)" || $(MAKE) list-corel
+benchmark: all list-corel list-acervo
 	@./$(TARGET)
 
 # -----------------------------
