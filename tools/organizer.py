@@ -14,7 +14,6 @@ def _copiar_sem_sobrescrever(src: str, dst_dir: str, filename: str) -> bool:
         shutil.copy2(src, dst_path)
         return True
 
-    # Se já existe, tenta nomes alternativos
     for i in range(1, 10000):
         alt_name = f"{base}_{i}{ext}"
         alt_path = os.path.join(dst_dir, alt_name)
@@ -24,54 +23,37 @@ def _copiar_sem_sobrescrever(src: str, dst_dir: str, filename: str) -> bool:
 
     return False
 
-def main():
+def organizar_dataset(project_root: str, csv_filename: str, output_folder_name: str, apelido_dataset: str):
     """
-    Organiza as imagens em diretórios por cluster.
-
-    Entrada:
-      - ../output/clusters_results.csv (gerado pelo C++)
-        colunas: filepath, cluster_id
-
-    Saída:
-      - ../output/acervo_organizado/Cluster_<id>/*.jpg|png...
-
-    Observação:
-      - Este script NÃO faz clusterização. Ele só aplica no filesystem o "mapa" (CSV)
-        produzido pelo C++.
-      - Usa cópia (shutil.copy2) para preservar metadados e não destruir o dataset original.
+    Função genérica que lê um CSV de clusters e organiza os arquivos em uma pasta específica.
     """
-    # Resolve caminhos de forma robusta (independente do diretório onde o usuário roda o script)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(script_dir, ".."))
-
-    csv_path = os.path.join(project_root, "output", "clusters_results.csv")
+    csv_path = os.path.join(project_root, "output", csv_filename)
     if not os.path.exists(csv_path):
-        print(f"Arquivo {csv_path} nao encontrado. Rode o C++ primeiro!")
+        print(f"\n[Aviso] Arquivo {csv_filename} não encontrado. Etapa do {apelido_dataset} ignorada.")
         return
 
-    # Evita pandas.errors.EmptyDataError quando o arquivo existe mas está vazio
     if os.path.getsize(csv_path) == 0:
-        print("clusters_results.csv está vazio — nada para organizar.")
+        print(f"\n[Aviso] {csv_filename} está vazio — nada para organizar no {apelido_dataset}.")
         return
 
     try:
         df = pd.read_csv(csv_path)
     except Exception as e:
-        print(f"Falha ao ler clusters_results.csv: {e}")
+        print(f"Falha ao ler {csv_filename}: {e}")
         return
 
     if df.empty:
-        print("clusters_results.csv não contém linhas — nada para organizar.")
+        print(f"{csv_filename} não contém linhas — nada para organizar.")
         return
 
     if "filepath" not in df.columns or "cluster_id" not in df.columns:
-        print("clusters_results.csv não contém colunas esperadas: filepath, cluster_id")
+        print(f"{csv_filename} não contém as colunas esperadas: filepath, cluster_id")
         return
 
-    output_base = os.path.join(project_root, "output", "acervo_organizado")
+    output_base = os.path.join(project_root, "output", output_folder_name)
     os.makedirs(output_base, exist_ok=True)
 
-    print(f"Iniciando organizacao de {len(df)} imagens...")
+    print(f"\nIniciando organização de {len(df)} imagens do {apelido_dataset}...")
 
     sucesso = 0
     falhas = 0
@@ -79,20 +61,16 @@ def main():
 
     for _, row in df.iterrows():
         caminho_original = str(row["filepath"])
-
-        # O CSV deve conter caminhos relativos ao projeto (ex: data/corel1k/...jpg)
         filepath_real = os.path.join(project_root, caminho_original)
 
-        # Garante que cluster_id vire inteiro (evita pasta "Cluster_8.0")
         try:
             cluster_id = int(row["cluster_id"])
         except Exception:
-            print(f"[Aviso] cluster_id invalido para {caminho_original}: {row['cluster_id']}")
+            print(f"[Aviso] cluster_id inválido para {caminho_original}: {row['cluster_id']}")
             falhas += 1
             continue
 
         if not os.path.exists(filepath_real):
-            print(f"[Aviso] Arquivo nao encontrado no disco: {filepath_real}")
             nao_encontradas += 1
             continue
 
@@ -105,18 +83,39 @@ def main():
             if ok:
                 sucesso += 1
             else:
-                print(f"[Aviso] Nao foi possivel gerar nome unico para: {filepath_real}")
                 falhas += 1
         except Exception as e:
             print(f"Erro ao copiar {filepath_real}: {e}")
             falhas += 1
 
     print(
-        f"\nFinalizado!\n"
-        f"- Copiados com sucesso: {sucesso}\n"
-        f"- Falhas: {falhas}\n"
-        f"- Nao encontradas no disco: {nao_encontradas}\n"
-        f"Destino: {output_base}"
+        f"Finalizado ({apelido_dataset})!\n"
+        f"  - Copiados com sucesso: {sucesso}\n"
+        f"  - Falhas: {falhas}\n"
+        f"  - Não encontradas no disco: {nao_encontradas}\n"
+        f"  - Destino: {output_base}"
+    )
+
+def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, ".."))
+
+    print("=== EXECUTANDO ORGANIZADOR DE DIRETÓRIOS ===")
+
+    # 1. Organiza o Controle Acadêmico (Corel-1k K-Means++)
+    organizar_dataset(
+        project_root=project_root,
+        csv_filename="corel_kmeans_clusters.csv",
+        output_folder_name="corel_organizado",
+        apelido_dataset="Corel-1k (K-Means++)"
+    )
+
+    # 2. Organiza a Aplicação Prática (Acervo Real K-Means++)
+    organizar_dataset(
+        project_root=project_root,
+        csv_filename="acervo_clusters.csv",
+        output_folder_name="acervo_organizado",
+        apelido_dataset="Acervo Real (K-Means++)"
     )
 
 if __name__ == "__main__":
