@@ -70,7 +70,15 @@ int main() {
         std::cout << "-> Silhouette Score:   " << silhouette_kmeans_corel << "\n";
         std::cout << "-> Tempo Total:        " << tempo_kmeans_corel << " ms\n";
 
+        // Export do Corel-1k K-Means++ em arquivos próprios
+        // (usado pelo visualizer.py e organizer.py para o dataset de controle acadêmico)
+        exportarResultados("output/corel_kmeans_features.csv",
+                           "output/corel_kmeans_clusters.csv",
+                           corel_data);
+        std::cout << "[Info] Resultados Corel-1k K-Means++ exportados.\n";
+
         // [2] Corel-1k com PAM (busca local)
+        // PAM nao gera export: serve apenas para coleta de métricas da Tabela 7.
         std::cout << "\n[2] Executando PAM (Busca Local) no Corel-1k...\n";
         PAM pam_corel(10, 0.01f, 50); // lambda pequeno para não "colapsar" clusters; max_steps=50
 
@@ -134,8 +142,9 @@ int main() {
             extrator_acervo.processarDatasetImagens(acervo_data);
 
             // [3] Acervo Real com K-Means++ (nativo)
+            // K=3: corresponde às 3 instituições do acervo (UFRR, UERR, IFB)
             std::cout << "\n[3] Executando K-Means++ no Acervo Real...\n";
-            KMeansPP kmeans_acervo(10, 0.0f);
+            KMeansPP kmeans_acervo(3, 0.0f);
 
             Timer t3;
             t3.start();
@@ -148,7 +157,11 @@ int main() {
             std::cout << "-> Silhouette Score:   " << silhouette_kmeans_acervo << "\n";
             std::cout << "-> Tempo Total:        " << tempo_kmeans_acervo << " ms\n";
 
-            exportarResultados("output/features.csv", "output/clusters_results.csv", acervo_data);
+            // Export do Acervo Real em arquivos próprios
+            // (não sobrescreve os CSVs do Corel-1k)
+            exportarResultados("output/acervo_features.csv",
+                               "output/acervo_clusters.csv",
+                               acervo_data);
             std::cout << "\n[Info] Resultados do Acervo exportados para reordenacao em diretorios.\n";
         }
 
