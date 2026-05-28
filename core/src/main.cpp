@@ -27,8 +27,34 @@ static void exportarResultados(const std::string& out_features,
 }
 
 int main() {
-    std::cout << "=== PROTOCOLO DE COLETA DE METRICAS (TABELA 7) ===\n\n";
+    std::cout << "===================================================\n";
+    std::cout << "=== PROTOCOLO DE COLETA DE METRICAS (TABELA 7) ===\n";
+    std::cout << "===================================================\n\n";
 
+    std::cout << "Selecione o modo de execucao:\n";
+    std::cout << "[1] Apenas Benchmark de Controle Academico (Corel-1k)\n";
+    std::cout << "[2] Execucao Completa (Corel-1k + Acervo Real Eventos)\n";
+    std::cout << "Escolha uma opcao (1 ou 2): ";
+    
+    int opcao = 0;
+    std::cin >> opcao;
+
+    if (opcao != 1 && opcao != 2) {
+        std::cout << "\n[Erro] Opcao invalida. Encerrando o programa.\n";
+        return 1;
+    }
+
+    int k_acervo = 3; // Valor padrão inicial
+    if (opcao == 2) {
+        std::cout << "Digite a quantidade de clusters (K) para o Acervo Real: ";
+        std::cin >> k_acervo;
+        if (k_acervo <= 0) {
+            std::cout << "\n[Erro] O numero de clusters deve ser maior que 0. Encerrando.\n";
+            return 1;
+        }
+    }
+
+    std::cout << "\nIniciando processamento...\n\n";
     std::filesystem::create_directories("output");
 
     Timer timer_global;
@@ -36,9 +62,7 @@ int main() {
 
     // =================================================================
     // PARTE 1 e 2: BENCHMARK DE CONTROLE ACADÊMICO (COREL-1K)
-    // Tabela 7:
-    //  - Corel-1k com K-Means++ (nativo)
-    //  - Corel-1k com PAM (busca local)
+    // Executado em ambas as opções (1 e 2)
     // =================================================================
     std::cout << "Carregando Dataset Corel-1k...\n";
     std::vector<Point> corel_data;
@@ -46,49 +70,38 @@ int main() {
     try {
         corel_data = ImageLoader::carregarListaImagens("data/corel1k/lista_imagens.txt");
 
-        // Hiperparâmetros de features (escolhas de engenharia):
-        //  - bins_canal_cor=4 => 4^3 = 64 dimensões de cor
-        //  - bins_hog=9 e grade 4x4 (no FeatureExtractor) => 4*4*9 = 144 dimensões de HOG
-        // Total: 208 dimensões por imagem
         FeatureExtractor extrator_corel(4, 9);
         extrator_corel.processarDatasetImagens(corel_data);
 
         // [1] Corel-1k com K-Means++ (nativo: lambda=0)
-        std::cout << "\n[1] Executando K-Means++ no Corel-1k...\n";
-        KMeansPP kmeans_corel(10, 0.0f); // k=10 pois o Corel-1k possui 10 categorias de referência
+        std::cout << "\n[1] Executando K-Means++ no Corel-1k (K=10)...\n";
+        KMeansPP kmeans_corel(10, 0.0f); 
 
         Timer t1;
         t1.start();
         std::vector<Cluster> clusters_kmeans = kmeans_corel.executar(corel_data);
         double tempo_kmeans_corel = t1.elapsedMilliseconds();
 
-        // Silhouette é O(N²): calculado separadamente do timer de clusterização
-        // para não contaminar a métrica de tempo da Tabela 7.
         float silhouette_kmeans_corel = calcularSilhouette(corel_data, clusters_kmeans);
 
         std::cout << "-> Metrica WCSS:       " << calcularWCSS(corel_data, clusters_kmeans) << "\n";
         std::cout << "-> Silhouette Score:   " << silhouette_kmeans_corel << "\n";
         std::cout << "-> Tempo Total:        " << tempo_kmeans_corel << " ms\n";
 
-        // Export do Corel-1k K-Means++ em arquivos próprios
-        // (usado pelo visualizer.py e organizer.py para o dataset de controle acadêmico)
         exportarResultados("output/corel_kmeans_features.csv",
                            "output/corel_kmeans_clusters.csv",
                            corel_data);
         std::cout << "[Info] Resultados Corel-1k K-Means++ exportados.\n";
 
         // [2] Corel-1k com PAM (busca local)
-        // PAM nao gera export: serve apenas para coleta de métricas da Tabela 7.
-        std::cout << "\n[2] Executando PAM (Busca Local) no Corel-1k...\n";
-        PAM pam_corel(10, 0.01f, 50); // lambda pequeno para não "colapsar" clusters; max_steps=50
+        std::cout << "\n[2] Executando PAM (Busca Local) no Corel-1k (K=10)...\n";
+        PAM pam_corel(10, 0.01f, 50); 
 
         Timer t2;
         t2.start();
         std::vector<Cluster> clusters_pam = pam_corel.executar(corel_data);
         double tempo_pam_corel = t2.elapsedMilliseconds();
 
-        // Atenção: WCSS usa dist² ao centro. No PAM o custo interno é dist "bruta".
-        // Mesmo assim, calcular WCSS é útil para comparação uniforme (Tabela 7).
         float silhouette_pam_corel = calcularSilhouette(corel_data, clusters_pam);
 
         std::cout << "-> Metrica WCSS:       " << calcularWCSS(corel_data, clusters_pam) << "\n";
@@ -101,72 +114,69 @@ int main() {
 
     // =================================================================
     // PARTE 3: APLICAÇÃO PRÁTICA (ACERVO REAL EVENTOS)
-    // Tabela 7:
-    //  - Acervo Real Eventos com K-Means++ (nativo)
-    //
-    // Requisito do projeto:
-    //  - Se o acervo real não existir OU estiver vazio (lista vazia),
-    //    usar Corel-1k como fallback para não quebrar o pipeline.
+    // Executado apenas se o usuário escolher a Opção 2
     // =================================================================
-    std::cout << "\n===================================================\n";
-    std::cout << "Carregando Dataset Acervo Real Eventos...\n";
+    if (opcao == 2) {
+        std::cout << "\n===================================================\n";
+        std::cout << "Carregando Dataset Acervo Real Eventos...\n";
 
-    std::vector<Point> acervo_data;
-    try {
-        std::string lista_acervo = "data/acervo_real/lista_imagens.txt";
-        const std::string lista_corel  = "data/corel1k/lista_imagens.txt";
+        std::vector<Point> acervo_data;
+        try {
+            std::string lista_acervo = "data/acervo_real/lista_imagens.txt";
+            bool prosseguir_acervo = true;
 
-        // (A) Se o arquivo do acervo não existe: fallback imediato
-        {
+            // Mantém a proteção por Warnings mesmo se o usuário escolheu rodar
             std::ifstream testa_acervo(lista_acervo);
             if (!testa_acervo.good()) {
-                std::cout << "[Aviso] Lista do acervo real nao encontrada. Usando Corel-1k como fallback para a aplicacao pratica.\n";
-                lista_acervo = lista_corel;
+                std::cout << "[Aviso] Arquivo '" << lista_acervo << "' nao encontrado.\n";
+                prosseguir_acervo = false;
             }
+
+            if (prosseguir_acervo) {
+                acervo_data = ImageLoader::carregarListaImagens(lista_acervo);
+                if (acervo_data.empty()) {
+                    std::cout << "[Aviso] Lista do acervo real carregada mas esta vazia.\n";
+                    prosseguir_acervo = false;
+                }
+            }
+
+            if (!prosseguir_acervo) {
+                std::cout << "[Aviso] Etapa 3 (Aplicacao Pratica) sera ignorada por falta de dados de entrada.\n";
+            } else {
+                // Validação para garantir que o K escolhido não seja maior que a quantidade de imagens disponíveis
+                if (static_cast<size_t>(k_acervo) > acervo_data.size()) {
+                    std::cout << "[Aviso] K=" << k_acervo << " eh maior que o numero de imagens (" << acervo_data.size() 
+                              << "). Ajustando K para " << acervo_data.size() << ".\n";
+                    k_acervo = acervo_data.size();
+                }
+
+                FeatureExtractor extrator_acervo(4, 9);
+                extrator_acervo.processarDatasetImagens(acervo_data);
+
+                // Execução do K-Means++ com o K definido pelo usuário
+                std::cout << "\n[3] Executando K-Means++ no Acervo Real com K=" << k_acervo << "...\n";
+                KMeansPP kmeans_acervo(k_acervo, 0.0f);
+
+                Timer t3;
+                t3.start();
+                std::vector<Cluster> clusters_acervo = kmeans_acervo.executar(acervo_data);
+                double tempo_kmeans_acervo = t3.elapsedMilliseconds();
+
+                float silhouette_kmeans_acervo = calcularSilhouette(acervo_data, clusters_acervo);
+
+                std::cout << "-> Metrica WCSS:       " << calcularWCSS(acervo_data, clusters_acervo) << "\n";
+                std::cout << "-> Silhouette Score:   " << silhouette_kmeans_acervo << "\n";
+                std::cout << "-> Tempo Total:        " << tempo_kmeans_acervo << " ms\n";
+
+                exportarResultados("output/acervo_features.csv",
+                                   "output/acervo_clusters.csv",
+                                   acervo_data);
+                std::cout << "\n[Info] Resultados do Acervo exportados com sucesso.\n";
+            }
+
+        } catch (const std::exception& e) {
+            std::cerr << "Erro no Acervo Real: " << e.what() << "\n";
         }
-
-        // (B) Carrega a lista escolhida
-        acervo_data = ImageLoader::carregarListaImagens(lista_acervo);
-
-        // (C) Se a lista existir mas estiver vazia: fallback para Corel-1k
-        if (acervo_data.empty()) {
-            std::cout << "[Aviso] Acervo real sem imagens (lista vazia). Usando Corel-1k como fallback para a aplicacao pratica.\n";
-            lista_acervo = lista_corel;
-            acervo_data = ImageLoader::carregarListaImagens(lista_acervo);
-        }
-
-        if (acervo_data.empty()) {
-            std::cout << "[Aviso] Dataset de aplicacao pratica ainda vazio. Etapa 3 sera ignorada.\n";
-        } else {
-            FeatureExtractor extrator_acervo(4, 9);
-            extrator_acervo.processarDatasetImagens(acervo_data);
-
-            // [3] Acervo Real com K-Means++ (nativo)
-            // K=3: corresponde às 3 instituições do acervo (UFRR, UERR, IFB)
-            std::cout << "\n[3] Executando K-Means++ no Acervo Real...\n";
-            KMeansPP kmeans_acervo(3, 0.0f);
-
-            Timer t3;
-            t3.start();
-            std::vector<Cluster> clusters_acervo = kmeans_acervo.executar(acervo_data);
-            double tempo_kmeans_acervo = t3.elapsedMilliseconds();
-
-            float silhouette_kmeans_acervo = calcularSilhouette(acervo_data, clusters_acervo);
-
-            std::cout << "-> Metrica WCSS:       " << calcularWCSS(acervo_data, clusters_acervo) << "\n";
-            std::cout << "-> Silhouette Score:   " << silhouette_kmeans_acervo << "\n";
-            std::cout << "-> Tempo Total:        " << tempo_kmeans_acervo << " ms\n";
-
-            // Export do Acervo Real em arquivos próprios
-            // (não sobrescreve os CSVs do Corel-1k)
-            exportarResultados("output/acervo_features.csv",
-                               "output/acervo_clusters.csv",
-                               acervo_data);
-            std::cout << "\n[Info] Resultados do Acervo exportados para reordenacao em diretorios.\n";
-        }
-
-    } catch (const std::exception& e) {
-        std::cerr << "Erro no Acervo Real: " << e.what() << "\n";
     }
 
     std::cout << "\n=== TEMPO TOTAL EXECUCAO: " << timer_global.elapsedMilliseconds() << " ms ===\n";
